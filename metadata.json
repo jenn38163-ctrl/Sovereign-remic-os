@@ -1,0 +1,6 @@
+{
+  "name": "Integration Hub",
+  "description": "A unified platform to configure, test, and monitor external API integrations, webhooks, and AI workflows.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
