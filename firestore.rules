@@ -1,0 +1,127 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default Deny Catch-All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isTenantMember(tenantId) {
+      return isVerifiedUser() && (
+        request.auth.token.tenant_id == tenantId ||
+        request.auth.uid == tenantId
+      );
+    }
+
+    // --- Settlement Intents ---
+    function isValidSettlementIntent(data) {
+      return data.keys().hasAll(['id', 'tenant_id', 'wallet_id', 'amount', 'currency', 'provider', 'state']) &&
+        data.id is string && isValidId(data.id) &&
+        data.tenant_id is string && isValidId(data.tenant_id) &&
+        data.wallet_id is string && isValidId(data.wallet_id) &&
+        data.amount is string && data.amount.size() <= 64 &&
+        data.currency in ['USDC', 'PLN', 'BTC', 'EUR', 'USD'] &&
+        data.provider in ['PAYU', 'STARKNET', 'GOOGLEPAY'] &&
+        data.state in ['PENDING', 'AUTHORIZED', 'LEDGER_POSTED', 'SETTLEMENT_SUBMITTED', 'SETTLEMENT_CONFIRMED', 'SETTLEMENT_FAILED', 'RECONCILIATION_REQUIRED', 'REVERTED'];
+    }
+
+    match /settlement_intents/{intentId} {
+      allow get: if isTenantMember(resource.data.tenant_id);
+      allow list: if isVerifiedUser() && resource.data.tenant_id == request.auth.token.tenant_id;
+      allow create: if isTenantMember(request.resource.data.tenant_id) &&
+        isValidId(intentId) &&
+        isValidSettlementIntent(request.resource.data);
+      allow update: if isTenantMember(resource.data.tenant_id) &&
+        isValidId(intentId) &&
+        isValidSettlementIntent(request.resource.data) &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.tenant_id == resource.data.tenant_id &&
+        request.resource.data.wallet_id == resource.data.wallet_id &&
+        request.resource.data.amount == resource.data.amount &&
+        request.resource.data.currency == resource.data.currency &&
+        request.resource.data.provider == resource.data.provider &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'updated_at', 'external_reference', 'reconciliation_reason']);
+      allow delete: if false;
+    }
+
+    // --- Journal Entries (Immutable & Tenant Bound) ---
+    function isValidJournalEntry(data) {
+      return data.keys().hasAll(['id', 'tenant_id', 'intent_id', 'wallet_id', 'amount', 'type']) &&
+        data.id is string && isValidId(data.id) &&
+        data.tenant_id is string && isValidId(data.tenant_id) &&
+        data.intent_id is string && isValidId(data.intent_id) &&
+        data.wallet_id is string && isValidId(data.wallet_id) &&
+        data.amount is string && data.amount.size() <= 64 &&
+        data.type in ['DEBIT', 'CREDIT'];
+    }
+
+    match /journal_entries/{entryId} {
+      allow get: if isTenantMember(resource.data.tenant_id);
+      allow list: if isVerifiedUser() && resource.data.tenant_id == request.auth.token.tenant_id;
+      allow create: if isTenantMember(request.resource.data.tenant_id) &&
+        isValidId(entryId) &&
+        isValidJournalEntry(request.resource.data);
+      allow update, delete: if false;
+    }
+
+    // --- Audit Logs (Tenant Scoped & Append-Only) ---
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['id', 'tenant_id', 'sequence_number', 'action', 'payload', 'previous_hash', 'hash']) &&
+        data.id is string && isValidId(data.id) &&
+        data.tenant_id is string && isValidId(data.tenant_id) &&
+        data.sequence_number is int &&
+        data.action is string && data.action.size() <= 128 &&
+        data.payload is string && data.payload.size() <= 4096 &&
+        data.previous_hash is string && data.previous_hash.size() <= 128 &&
+        data.hash is string && data.hash.size() <= 128;
+    }
+
+    match /audit_logs/{logId} {
+      allow get: if isTenantMember(resource.data.tenant_id);
+      allow list: if isVerifiedUser() && resource.data.tenant_id == request.auth.token.tenant_id;
+      allow create: if isTenantMember(request.resource.data.tenant_id) &&
+        isValidId(logId) &&
+        isValidAuditLog(request.resource.data);
+      allow update, delete: if false;
+    }
+
+    // --- CARS Outbox (Tenant Scoped & Protected) ---
+    function isValidOutboxItem(data) {
+      return data.keys().hasAll(['id', 'tenant_id', 'intent_id', 'state', 'payload', 'retry_count']) &&
+        data.id is string && isValidId(data.id) &&
+        data.tenant_id is string && isValidId(data.tenant_id) &&
+        data.intent_id is string && isValidId(data.intent_id) &&
+        data.state in ['PENDING', 'CLAIMED', 'ACKNOWLEDGED', 'RETRY', 'DEAD_LETTER'] &&
+        data.payload is string && data.payload.size() <= 4096 &&
+        data.retry_count is int;
+    }
+
+    match /cars_outbox/{outboxId} {
+      allow get: if isTenantMember(resource.data.tenant_id);
+      allow list: if isVerifiedUser() && resource.data.tenant_id == request.auth.token.tenant_id;
+      allow create: if isTenantMember(request.resource.data.tenant_id) &&
+        isValidId(outboxId) &&
+        isValidOutboxItem(request.resource.data);
+      allow update, delete: if false;
+    }
+
+    // --- System Metadata (Audit Sequence Tracker) ---
+    match /system_metadata/{metaId} {
+      allow read, write: if isVerifiedUser() && request.auth.token.admin == true;
+    }
+  }
+}

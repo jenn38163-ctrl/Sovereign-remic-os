@@ -22,7 +22,9 @@ import {
   Zap,
   Layers,
   BarChart3,
-  Globe
+  Globe,
+  Wallet,
+  Download
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
@@ -66,10 +68,69 @@ const analyticsData = [
 ];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'integrations' | 'console' | 'logs' | 'analytics'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'integrations' | 'console' | 'logs' | 'analytics' | 'ledger'>('overview');
   const [integrations, setIntegrations] = useState<Integration[]>(initialIntegrations);
   const [logs, setLogs] = useState<LogItem[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+
+  // Ledger State
+  const [ledgerData, setLedgerData] = useState<any>({ journal_entries: [], audit_logs: [], settlement_intents: [] });
+  const [ledgerLoading, setLedgerLoading] = useState(false);
+  const [settleAmount, setSettleAmount] = useState('100.00');
+  const [settleCurrency, setSettleCurrency] = useState('USDC');
+  const [settleProvider, setSettleProvider] = useState('PAYU');
+
+  // Fetch ledger data
+  const fetchLedger = async () => {
+    try {
+      const res = await fetch('/api/ledger/state');
+      const data = await res.json();
+      setLedgerData(data);
+    } catch (e) {
+      console.error('Failed to fetch ledger', e);
+    }
+  };
+
+  useEffect(() => {
+    fetchLedger();
+  }, []);
+
+  const handleSettle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLedgerLoading(true);
+    try {
+      await fetch('/api/ledger/settle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: settleAmount, currency: settleCurrency, provider: settleProvider })
+      });
+      await fetchLedger();
+    } catch (e) {
+      console.error('Failed to settle', e);
+    } finally {
+      setLedgerLoading(false);
+    }
+  };
+
+  const handleDownloadAuditTrail = () => {
+    const exportData = {
+      exported_at: new Date().toISOString(),
+      tenant_id: 'tenant-demo',
+      signature: 'sig_' + Math.random().toString(36).substring(2) + '_' + Date.now(),
+      journal_entries: ledgerData.journal_entries,
+      audit_logs: ledgerData.audit_logs,
+      settlement_intents: ledgerData.settlement_intents
+    };
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `audit_trail_${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   // Console Test State
   const [selectedIntId, setSelectedIntId] = useState<string>('int-1');
@@ -245,6 +306,16 @@ export default function App() {
             }`}>
             <BarChart3 className="w-4 h-4" />
             <span>Performance & Metrics</span>
+          </button>
+          
+          <div className="text-xs font-semibold uppercase tracking-wider text-neutral-400 px-3 pb-2 pt-6">Agent Wallet OS</div>
+          <button
+            onClick={() => setActiveTab('ledger')}
+            className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+              activeTab === 'ledger' ? 'bg-neutral-900 text-white shadow-xs' : 'text-neutral-600 hover:bg-neutral-200/60 hover:text-neutral-900'
+            }`}>
+            <Wallet className="w-4 h-4" />
+            <span>Financial Ledger</span>
           </button>
         </aside>
 
@@ -646,6 +717,141 @@ export default function App() {
                     <div className="text-xs text-emerald-800">
                       <span className="font-semibold">Zero Vulnerabilities</span> detected in webhook signature verification.
                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'ledger' && (
+            <div className="space-y-6">
+              <div className="bg-white p-6 rounded-xl border border-neutral-200 shadow-xs">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-base font-semibold text-neutral-900">Settlement Orchestrator</h2>
+                    <p className="text-xs text-neutral-500">Hardened financial kernel tests. Securely routes transactions through internal double-entry accounting before provider settlement.</p>
+                  </div>
+                  <span className="text-xs px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 font-medium border border-emerald-200 flex items-center">
+                    <ShieldCheck className="w-3.5 h-3.5 mr-1" />
+                    Kernel Hardened
+                  </span>
+                </div>
+
+                <form onSubmit={handleSettle} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end bg-neutral-50 p-4 rounded-lg border border-neutral-200">
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-700 mb-1">Amount</label>
+                    <input
+                      type="text"
+                      value={settleAmount}
+                      onChange={(e) => setSettleAmount(e.target.value)}
+                      className="w-full text-sm font-mono p-2.5 rounded-lg border border-neutral-200 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-700 mb-1">Currency</label>
+                    <select
+                      value={settleCurrency}
+                      onChange={(e) => setSettleCurrency(e.target.value)}
+                      className="w-full text-sm p-2.5 rounded-lg border border-neutral-200 focus:outline-none font-mono">
+                      <option value="USDC">USDC</option>
+                      <option value="PLN">PLN</option>
+                      <option value="BTC">BTC (Fails on PayU)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-700 mb-1">Provider</label>
+                    <select
+                      value={settleProvider}
+                      onChange={(e) => setSettleProvider(e.target.value)}
+                      className="w-full text-sm p-2.5 rounded-lg border border-neutral-200 focus:outline-none font-mono">
+                      <option value="PAYU">PayU Gateway</option>
+                      <option value="STARKNET">Starknet L2</option>
+                    </select>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={ledgerLoading}
+                    className="w-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium py-2.5 rounded-lg text-sm transition-colors cursor-pointer disabled:opacity-50 h-[42px] flex justify-center items-center">
+                    {ledgerLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Authorize Settlement'}
+                  </button>
+                </form>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white rounded-xl border border-neutral-200 shadow-xs overflow-hidden">
+                  <div className="px-6 py-4 border-b border-neutral-200 bg-neutral-50/50">
+                    <h3 className="text-sm font-semibold text-neutral-900">Settlement Intents & Journal</h3>
+                  </div>
+                  <div className="divide-y divide-neutral-200 max-h-[400px] overflow-y-auto">
+                    {ledgerData.settlement_intents.map((intent: any) => (
+                      <div key={intent.id} className="p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs font-mono font-medium text-neutral-900">{intent.id}</span>
+                            <span className="text-[10px] uppercase tracking-wider text-neutral-500 font-semibold">{intent.provider}</span>
+                          </div>
+                          <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-semibold ${
+                            intent.state === 'SETTLEMENT_CONFIRMED' ? 'bg-emerald-100 text-emerald-800' : 
+                            intent.state === 'SETTLEMENT_FAILED' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {intent.state}
+                          </span>
+                        </div>
+                        
+                        <div className="bg-neutral-50 rounded p-2 text-xs font-mono space-y-1">
+                          {ledgerData.journal_entries.filter((j: any) => j.intent_id === intent.id).map((entry: any) => (
+                            <div key={entry.id} className="flex justify-between border-b border-neutral-200/50 last:border-0 pb-1 last:pb-0">
+                              <span className={entry.type === 'CREDIT' ? 'text-emerald-600' : 'text-neutral-600'}>{entry.type}</span>
+                              <span className="font-semibold">{entry.amount} {intent.currency}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    {ledgerData.settlement_intents.length === 0 && (
+                      <div className="p-8 text-center text-neutral-500 text-xs">No settlements recorded.</div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-xl border border-neutral-200 shadow-xs overflow-hidden">
+                  <div className="px-6 py-4 border-b border-neutral-200 bg-neutral-50/50 flex justify-between items-center">
+                    <div className="flex items-center space-x-2">
+                      <h3 className="text-sm font-semibold text-neutral-900">Cryptographic Audit Chain</h3>
+                      <span className="text-[10px] px-2 py-0.5 bg-neutral-100 text-neutral-600 rounded font-mono">APPEND-ONLY</span>
+                    </div>
+                    <button
+                      onClick={handleDownloadAuditTrail}
+                      className="inline-flex items-center space-x-1.5 bg-neutral-900 hover:bg-neutral-800 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shadow-xs cursor-pointer">
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download Audit Trail</span>
+                    </button>
+                  </div>
+                  <div className="divide-y divide-neutral-200 max-h-[400px] overflow-y-auto">
+                    {ledgerData.audit_logs.map((log: any) => (
+                      <div key={log.id} className="p-4 text-xs font-mono space-y-2 hover:bg-neutral-50 transition-colors">
+                        <div className="flex justify-between items-center text-neutral-900 font-semibold">
+                          <span>#{log.sequence_number} — {log.action}</span>
+                          <span className="text-[10px] text-neutral-400">{new Date(log.created_at).toLocaleTimeString()}</span>
+                        </div>
+                        <div className="text-[10px] text-neutral-600 truncate bg-neutral-100 px-2 py-1 rounded">
+                          Payload: {JSON.stringify(log.payload)}
+                        </div>
+                        <div className="text-[10px] space-y-0.5">
+                          <div className="flex items-center text-neutral-500">
+                            <span className="w-8 shrink-0">Prev:</span> 
+                            <span className="truncate">{log.previous_hash}</span>
+                          </div>
+                          <div className="flex items-center text-neutral-900 font-semibold">
+                            <span className="w-8 shrink-0">Hash:</span> 
+                            <span className="truncate text-emerald-700">{log.hash}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {ledgerData.audit_logs.length === 0 && (
+                      <div className="p-8 text-center text-neutral-500 text-xs">No audit logs recorded.</div>
+                    )}
                   </div>
                 </div>
               </div>

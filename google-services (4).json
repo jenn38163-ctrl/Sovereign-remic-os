@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "749043885999",
+    "project_id": "sovereign-remic-os",
+    "storage_bucket": "sovereign-remic-os.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:749043885999:android:5b9e320b7fab0b4b46315a",
+        "android_client_info": {
+          "package_name": "com.sovereignremic.os"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDBaP6b_pbEHmU2WpwRr-f6vRhfMwPhago"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

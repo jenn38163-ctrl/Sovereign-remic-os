@@ -4,6 +4,9 @@ import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
 import { createServer as createViteServer } from "vite";
+import { SettlementOrchestrator } from "./agent-wallet-os/src/settlement/orchestrator";
+import { SettlementIntent } from "./agent-wallet-os/src/types";
+import { firestoreAdmin } from "./src/lib/firebase-admin";
 
 dotenv.config();
 
@@ -13,6 +16,8 @@ const __dirname = path.dirname(__filename);
 async function startServer() {
   const app = express();
   app.use(express.json());
+
+  const orchestrator = new SettlementOrchestrator();
 
   // Initialize Gemini AI SDK securely on the server
   let aiClient: GoogleGenAI | null = null;
@@ -200,6 +205,56 @@ async function startServer() {
   // Get recent logs
   app.get("/api/integrations/logs", (req, res) => {
     res.json({ logs: integrationLogs });
+  });
+
+  // --- Financial Ledger API directly querying Authoritative Firestore Collections ---
+  app.get("/api/ledger/state", async (req, res) => {
+    try {
+      const [journalSnap, auditSnap, intentSnap] = await Promise.all([
+        firestoreAdmin.collection('journal_entries').orderBy('created_at', 'desc').limit(25).get(),
+        firestoreAdmin.collection('audit_logs').orderBy('sequence_number', 'desc').limit(25).get(),
+        firestoreAdmin.collection('settlement_intents').orderBy('created_at', 'desc').limit(25).get()
+      ]);
+
+      res.json({
+        journal_entries: journalSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+        audit_logs: auditSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+        settlement_intents: intentSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/ledger/settle", async (req, res) => {
+    try {
+      const { amount, currency, provider } = req.body;
+      const intent: SettlementIntent = {
+        id: `intent-${Math.random().toString(36).substring(7)}`,
+        tenant_id: 'tenant-demo',
+        wallet_id: 'wallet-demo',
+        amount: amount || "0",
+        currency: currency || "USDC",
+        provider: provider || "PAYU",
+        state: 'AUTHORIZED',
+        created_at: new Date(),
+        updated_at: new Date()
+      };
+
+      // Persist intent to Firestore authoritatively
+      await firestoreAdmin.collection('settlement_intents').doc(intent.id).set({
+        ...intent,
+        created_at: intent.created_at.toISOString(),
+        updated_at: intent.updated_at.toISOString()
+      });
+
+      // Run orchestrator
+      await orchestrator.executeSettlement(intent);
+
+      res.json({ success: true, intentId: intent.id, state: intent.state });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
   });
 
   // Vite middleware setup for development, static serving for production

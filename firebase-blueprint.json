@@ -1,0 +1,85 @@
+{
+  "entities": {
+    "SettlementIntent": {
+      "title": "SettlementIntent",
+      "description": "Represents an authorization and settlement intent across providers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "tenant_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "wallet_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "amount": { "type": "string", "maxLength": 64 },
+        "currency": { "type": "string", "enum": ["USDC", "PLN", "BTC", "EUR", "USD"] },
+        "provider": { "type": "string", "enum": ["PAYU", "STARKNET", "GOOGLEPAY"] },
+        "state": { "type": "string", "enum": ["PENDING", "AUTHORIZED", "LEDGER_POSTED", "SETTLEMENT_SUBMITTED", "SETTLEMENT_CONFIRMED", "SETTLEMENT_FAILED", "REVERTED"] },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "tenant_id", "wallet_id", "amount", "currency", "provider", "state"]
+    },
+    "JournalEntry": {
+      "title": "JournalEntry",
+      "description": "Double-entry accounting journal transaction ledger line",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "tenant_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "intent_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "wallet_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "amount": { "type": "string", "maxLength": 64 },
+        "type": { "type": "string", "enum": ["DEBIT", "CREDIT"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "tenant_id", "intent_id", "wallet_id", "amount", "type"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Cryptographically hashed append-only audit trail node with tenant isolation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "tenant_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "sequence_number": { "type": "integer" },
+        "action": { "type": "string", "maxLength": 128 },
+        "payload": { "type": "string", "maxLength": 4096 },
+        "previous_hash": { "type": "string", "maxLength": 128 },
+        "hash": { "type": "string", "maxLength": 128 },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "tenant_id", "sequence_number", "action", "payload", "previous_hash", "hash"]
+    },
+    "CARSOutbox": {
+      "title": "CARSOutbox",
+      "description": "Durable treasury outbox for CARS reporting events",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "tenant_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "intent_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "state": { "type": "string", "enum": ["PENDING", "CLAIMED", "ACKNOWLEDGED", "RETRY", "DEAD_LETTER"] },
+        "payload": { "type": "string", "maxLength": 4096 },
+        "retry_count": { "type": "integer" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "tenant_id", "intent_id", "state", "payload", "retry_count"]
+    }
+  },
+  "firestore": {
+    "/settlement_intents/{intentId}": {
+      "schema": { "$ref": "#/entities/SettlementIntent" },
+      "description": "Financial settlement intents partitioned by tenant"
+    },
+    "/journal_entries/{entryId}": {
+      "schema": { "$ref": "#/entities/JournalEntry" },
+      "description": "Double-entry append-only lines partitioned by tenant"
+    },
+    "/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Tenant-bound append-only SHA-256 audit chain"
+    },
+    "/cars_outbox/{outboxId}": {
+      "schema": { "$ref": "#/entities/CARSOutbox" },
+      "description": "Durable treasury outbox records"
+    }
+  }
+}
