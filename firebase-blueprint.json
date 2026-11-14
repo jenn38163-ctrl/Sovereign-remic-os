@@ -11,7 +11,7 @@
         "amount": { "type": "string", "maxLength": 64 },
         "currency": { "type": "string", "enum": ["USDC", "PLN", "BTC", "EUR", "USD"] },
         "provider": { "type": "string", "enum": ["PAYU", "STARKNET", "GOOGLEPAY"] },
-        "state": { "type": "string", "enum": ["PENDING", "AUTHORIZED", "LEDGER_POSTED", "SETTLEMENT_SUBMITTED", "SETTLEMENT_CONFIRMED", "SETTLEMENT_FAILED", "REVERTED"] },
+        "state": { "type": "string", "enum": ["PENDING", "AUTHORIZED", "LEDGER_POSTED", "SETTLEMENT_SUBMITTED", "SETTLEMENT_CONFIRMED", "SETTLEMENT_FAILED", "RECONCILIATION_REQUIRED", "REVERTED"] },
         "created_at": { "type": "string", "format": "date-time" },
         "updated_at": { "type": "string", "format": "date-time" }
       },
@@ -62,6 +62,81 @@
         "created_at": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "tenant_id", "intent_id", "state", "payload", "retry_count"]
+    },
+    "DebtNote": {
+      "title": "DebtNote",
+      "description": "Secured REMIC debt note with distinct-individual 4-eyes approval and registered RSA-SHA256 signature",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "tenant_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "cusip": { "type": "string", "maxLength": 32 },
+        "isin": { "type": "string", "maxLength": 32 },
+        "principal_value": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "enum": ["PENDING_CHECKER_APPROVAL", "31 CFR SEC PERFECTLY CUSTODED"] },
+        "created_by": { "type": "string", "maxLength": 128 },
+        "created_by_individual_id": { "type": "string", "maxLength": 128 },
+        "approved_by": { "type": "string", "maxLength": 128 },
+        "approved_by_individual_id": { "type": "string", "maxLength": 128 },
+        "signature_key_id": { "type": "string", "maxLength": 128 },
+        "archived": { "type": "boolean" }
+      },
+      "required": ["id", "tenant_id", "principal_value", "status", "created_by"]
+    },
+    "PPMOffering": {
+      "title": "PPMOffering",
+      "description": "Private Placement Memorandum offering with operative exemption pathway, Reg A Tier 1/2 limits, Rule 501(e) counting, and counsel review record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "tenant_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "maxLength": 256 },
+        "exemption_pathway": { "type": "string", "enum": ["RULE_506_B", "RULE_506_C", "REG_A_TIER_1", "REG_A_TIER_2", "REG_S"] },
+        "offering_amount": { "type": "string", "maxLength": 64 },
+        "affiliate_offering_amount": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "enum": ["DRAFT", "PENDING_CHECKER_APPROVAL", "APPROVED", "COUNSEL_REVIEWED", "DISTRIBUTION_READY", "BLOCKED_COMPLIANCE", "ARCHIVED"] },
+        "version": { "type": "integer" },
+        "document_sha256": { "type": "string", "maxLength": 128 },
+        "created_by": { "type": "string", "maxLength": 128 },
+        "created_by_individual_id": { "type": "string", "maxLength": 128 },
+        "approved_by_individual_id": { "type": "string", "maxLength": 128 },
+        "counsel_review_record": { "type": "object" },
+        "signature_key_id": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "tenant_id", "title", "exemption_pathway", "offering_amount", "status", "version", "document_sha256", "created_by"]
+    },
+    "AssetPool": {
+      "title": "AssetPool",
+      "description": "REMIC collateral asset pool with 8-stage perfection verification and anti-over-pledge allocations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "tenant_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "pool_name": { "type": "string", "maxLength": 256 },
+        "pool_type": { "type": "string", "enum": ["MORTGAGE_REMIC", "TREASURY_COLLATERAL", "COMMERCIAL_REAL_ESTATE", "MIXED_FIXED_INCOME"] },
+        "debtor_legal_name": { "type": "string", "maxLength": 256 },
+        "total_principal_value": { "type": "string", "maxLength": 64 },
+        "verification": { "type": "object" },
+        "allocated_obligations": { "type": "array" },
+        "status": { "type": "string", "enum": ["PENDING_VERIFICATION", "PENDING_CHECKER_APPROVAL", "ACTIVE_CUSTODED", "ARCHIVED"] },
+        "created_by": { "type": "string", "maxLength": 128 },
+        "created_by_individual_id": { "type": "string", "maxLength": 128 },
+        "approved_by_individual_id": { "type": "string", "maxLength": 128 },
+        "signature_key_id": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "tenant_id", "pool_name", "pool_type", "total_principal_value", "status", "created_by"]
+    },
+    "IdempotencyKey": {
+      "title": "IdempotencyKey",
+      "description": "Durable idempotency lock preventing duplicate settlement postings",
+      "type": "object",
+      "properties": {
+        "key": { "type": "string", "maxLength": 128 },
+        "fingerprint": { "type": "string", "maxLength": 256 },
+        "state": { "type": "string", "enum": ["PROCESSING", "COMPLETED", "FAILED"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["key", "fingerprint", "state"]
     }
   },
   "firestore": {
@@ -80,6 +155,22 @@
     "/cars_outbox/{outboxId}": {
       "schema": { "$ref": "#/entities/CARSOutbox" },
       "description": "Durable treasury outbox records"
+    },
+    "/debt_notes/{noteId}": {
+      "schema": { "$ref": "#/entities/DebtNote" },
+      "description": "Secured REMIC debt note registry partitioned by tenant"
+    },
+    "/ppm_offerings/{offeringId}": {
+      "schema": { "$ref": "#/entities/PPMOffering" },
+      "description": "PPM offerings and securities compliance gates partitioned by tenant"
+    },
+    "/asset_pools/{poolId}": {
+      "schema": { "$ref": "#/entities/AssetPool" },
+      "description": "REMIC collateral asset pools partitioned by tenant"
+    },
+    "/idempotency_keys/{keyId}": {
+      "schema": { "$ref": "#/entities/IdempotencyKey" },
+      "description": "Durable idempotency keys for settlement execution"
     }
   }
 }

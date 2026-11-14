@@ -119,6 +119,98 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // --- Debt Notes (4-Eyes, Distinct-Individual, Tenant Isolated, No Hard Delete) ---
+    function isValidDebtNote(data) {
+      return data.keys().hasAll(['id', 'tenant_id', 'principal_value', 'status', 'created_by']) &&
+        isValidId(data.id) &&
+        isValidId(data.tenant_id) &&
+        data.principal_value is string && data.principal_value.size() <= 64 &&
+        data.status in ['PENDING_CHECKER_APPROVAL', '31 CFR SEC PERFECTLY CUSTODED'] &&
+        data.created_by is string && data.created_by.size() <= 128;
+    }
+
+    match /debt_notes/{noteId} {
+      allow get: if isTenantMember(resource.data.tenant_id);
+      allow list: if isVerifiedUser() && resource.data.tenant_id == request.auth.token.tenant_id;
+      allow create: if isTenantMember(request.resource.data.tenant_id) &&
+        isValidId(noteId) &&
+        isValidDebtNote(request.resource.data);
+      allow update: if isTenantMember(resource.data.tenant_id) &&
+        isValidId(noteId) &&
+        isValidDebtNote(request.resource.data) &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.tenant_id == resource.data.tenant_id &&
+        request.resource.data.created_by == resource.data.created_by &&
+        request.resource.data.approved_by != resource.data.created_by &&
+        (!('approved_by_individual_id' in request.resource.data) || request.resource.data.approved_by_individual_id == null || request.resource.data.approved_by_individual_id != resource.data.created_by_individual_id);
+      allow delete: if false;
+    }
+
+    // --- PPM Offerings (Operative Pathways Only, Distinct-Individual 4-Eyes, Tenant Isolated, No Hard Delete) ---
+    function isValidPpmOffering(data) {
+      return data.keys().hasAll(['id', 'tenant_id', 'title', 'exemption_pathway', 'offering_amount', 'status', 'version', 'document_sha256', 'created_by']) &&
+        isValidId(data.id) &&
+        isValidId(data.tenant_id) &&
+        data.title is string && data.title.size() <= 256 &&
+        data.exemption_pathway in ['RULE_506_B', 'RULE_506_C', 'REG_A_TIER_1', 'REG_A_TIER_2', 'REG_S'] &&
+        data.offering_amount is string && data.offering_amount.size() <= 64 &&
+        data.status in ['DRAFT', 'PENDING_CHECKER_APPROVAL', 'APPROVED', 'COUNSEL_REVIEWED', 'DISTRIBUTION_READY', 'BLOCKED_COMPLIANCE', 'ARCHIVED'] &&
+        data.version is int &&
+        data.document_sha256 is string && data.document_sha256.size() <= 128 &&
+        data.created_by is string && data.created_by.size() <= 128;
+    }
+
+    match /ppm_offerings/{offeringId} {
+      allow get: if isTenantMember(resource.data.tenant_id);
+      allow list: if isVerifiedUser() && resource.data.tenant_id == request.auth.token.tenant_id;
+      allow create: if isTenantMember(request.resource.data.tenant_id) &&
+        isValidId(offeringId) &&
+        isValidPpmOffering(request.resource.data);
+      allow update: if isTenantMember(resource.data.tenant_id) &&
+        isValidId(offeringId) &&
+        isValidPpmOffering(request.resource.data) &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.tenant_id == resource.data.tenant_id &&
+        request.resource.data.created_by == resource.data.created_by &&
+        request.resource.data.approved_by != resource.data.created_by &&
+        (!('approved_by_individual_id' in request.resource.data) || request.resource.data.approved_by_individual_id == null || request.resource.data.approved_by_individual_id != resource.data.created_by_individual_id);
+      allow delete: if false;
+    }
+
+    // --- REMIC Collateral Asset Pools (Tenant Isolated, Distinct-Individual 4-Eyes, No Hard Delete) ---
+    function isValidAssetPool(data) {
+      return data.keys().hasAll(['id', 'tenant_id', 'pool_name', 'pool_type', 'total_principal_value', 'status', 'created_by']) &&
+        isValidId(data.id) &&
+        isValidId(data.tenant_id) &&
+        data.pool_name is string && data.pool_name.size() <= 256 &&
+        data.pool_type in ['MORTGAGE_REMIC', 'TREASURY_COLLATERAL', 'COMMERCIAL_REAL_ESTATE', 'MIXED_FIXED_INCOME'] &&
+        data.total_principal_value is string && data.total_principal_value.size() <= 64 &&
+        data.status in ['PENDING_VERIFICATION', 'PENDING_CHECKER_APPROVAL', 'ACTIVE_CUSTODED', 'ARCHIVED'] &&
+        data.created_by is string && data.created_by.size() <= 128;
+    }
+
+    match /asset_pools/{poolId} {
+      allow get: if isTenantMember(resource.data.tenant_id);
+      allow list: if isVerifiedUser() && resource.data.tenant_id == request.auth.token.tenant_id;
+      allow create: if isTenantMember(request.resource.data.tenant_id) &&
+        isValidId(poolId) &&
+        isValidAssetPool(request.resource.data);
+      allow update: if isTenantMember(resource.data.tenant_id) &&
+        isValidId(poolId) &&
+        isValidAssetPool(request.resource.data) &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.tenant_id == resource.data.tenant_id &&
+        request.resource.data.created_by == resource.data.created_by &&
+        request.resource.data.approved_by != resource.data.created_by &&
+        (!('approved_by_individual_id' in request.resource.data) || request.resource.data.approved_by_individual_id == null || request.resource.data.approved_by_individual_id != resource.data.created_by_individual_id);
+      allow delete: if false;
+    }
+
+    // --- Idempotency Keys (Admin / Server Controlled) ---
+    match /idempotency_keys/{keyId} {
+      allow read, write: if isVerifiedUser() && request.auth.token.admin == true;
+    }
+
     // --- System Metadata (Audit Sequence Tracker) ---
     match /system_metadata/{metaId} {
       allow read, write: if isVerifiedUser() && request.auth.token.admin == true;
