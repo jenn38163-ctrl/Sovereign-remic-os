@@ -17,7 +17,6 @@ export const db: DbClient = {
 
   /**
    * Real authoritative atomic database transaction using Firestore runTransaction.
-   * Eliminates dual-state in-memory divergence: state is ONLY committed if Firestore transaction succeeds.
    */
   transaction: async <T>(callback: (tx: Tx) => Promise<T>): Promise<T> => {
     return await firestoreAdmin.runTransaction(async (firestoreTx) => {
@@ -33,7 +32,7 @@ export const db: DbClient = {
 };
 
 async function executeQueryWithTx(firestoreTx: any, text: string, params?: any[]) {
-  // 1. Journal Entry Insertion
+  // 1. Journal Entry Insertion (Balanced Double Entry)
   if (text.includes('INSERT INTO journal_entries')) {
     const entry = {
       id: Math.random().toString(36).substring(7),
@@ -76,27 +75,18 @@ async function executeQueryWithTx(firestoreTx: any, text: string, params?: any[]
     return { rows: [log] };
   }
 
-  // 3. Query Audit Sequence FOR UPDATE via sequence tracking document
+  // 3. Query Audit Sequence
   if (text.includes('SELECT sequence_number, hash FROM audit_logs')) {
     const seqDocRef = firestoreAdmin.collection('system_metadata').doc('audit_sequence');
-    
-    if (firestoreTx) {
-      const snap = await firestoreTx.get(seqDocRef);
-      if (snap.exists) {
-        const data = snap.data();
-        return { rows: [{ sequence_number: data.sequence_number, hash: data.hash }] };
-      }
-    } else {
-      const snap = await seqDocRef.get();
-      if (snap.exists) {
-        const data = snap.data();
-        return { rows: [{ sequence_number: data.sequence_number, hash: data.hash }] };
-      }
+    const snap = firestoreTx ? await firestoreTx.get(seqDocRef) : await seqDocRef.get();
+    if (snap.exists) {
+      const data = snap.data();
+      return { rows: [{ sequence_number: data.sequence_number, hash: data.hash }] };
     }
     return { rows: [] };
   }
 
-  // 4. Update Audit Sequence Tracker within the same transaction
+  // 4. Update Audit Sequence Tracker
   if (text.includes('UPDATE system_metadata SET sequence_number')) {
     const seq = params?.[0];
     const hash = params?.[1];
@@ -119,7 +109,6 @@ async function executeQueryWithTx(firestoreTx: any, text: string, params?: any[]
     if (id) {
       const docRef = firestoreAdmin.collection('settlement_intents').doc(id);
       const updateData = { state, updated_at: new Date().toISOString() };
-      
       if (firestoreTx) {
         firestoreTx.set(docRef, updateData, { merge: true });
       } else {
@@ -129,7 +118,31 @@ async function executeQueryWithTx(firestoreTx: any, text: string, params?: any[]
     return { rows: [] };
   }
 
-  // 6. CARS Outbox Insert
+  // 6. Idempotency Keys Lookup & Insertion
+  if (text.includes('SELECT * FROM idempotency_keys')) {
+    const key = params?.[0];
+    const docRef = firestoreAdmin.collection('idempotency_keys').doc(key);
+    const snap = firestoreTx ? await firestoreTx.get(docRef) : await docRef.get();
+    if (snap.exists) {
+      return { rows: [snap.data()] };
+    }
+    return { rows: [] };
+  }
+
+  if (text.includes('INSERT INTO idempotency_keys')) {
+    const key = params?.[0];
+    const fingerprint = params?.[1];
+    const record = { key, fingerprint, state: 'PROCESSING', created_at: new Date().toISOString() };
+    const docRef = firestoreAdmin.collection('idempotency_keys').doc(key);
+    if (firestoreTx) {
+      firestoreTx.set(docRef, record);
+    } else {
+      await docRef.set(record);
+    }
+    return { rows: [record] };
+  }
+
+  // 7. CARS Outbox Insert
   if (text.includes('INSERT INTO cars_outbox')) {
     const outboxRecord = {
       id: Math.random().toString(36).substring(7),

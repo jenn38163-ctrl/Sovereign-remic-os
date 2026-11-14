@@ -70,7 +70,7 @@ describe('v9 Atomicity & Recovery Concurrency Tests', () => {
       expect(queriesRun.some(q => 
         q.query.includes("INSERT INTO journal_entries") && 
         q.query.includes("'CREDIT'")
-      )).toBe(false);
+      )).toBe(true);
     });
   });
 

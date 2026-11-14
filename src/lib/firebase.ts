@@ -1,19 +1,18 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import firebaseConfig from '../../firebase-applet-config.json';
 
-const firebaseConfig = {
-  apiKey: "AIzaSyCjUtoo3c_aprSnxpR2gVUTmVFKq19NSoY",
-  authDomain: "sovereign-remic-os.firebaseapp.com",
-  databaseURL: "https://sovereign-remic-os-default-rtdb.firebaseio.com",
-  projectId: "sovereign-remic-os",
-  storageBucket: "sovereign-remic-os.firebasestorage.app",
-  messagingSenderId: "749043885999",
-  appId: "1:749043885999:web:d8a3838357e4211546315a",
-  measurementId: "G-NGG1LMWYRE"
-};
+const app = getApps().length === 0 ? initializeApp({
+  apiKey: firebaseConfig.apiKey,
+  authDomain: firebaseConfig.authDomain,
+  projectId: firebaseConfig.projectId,
+  storageBucket: firebaseConfig.storageBucket,
+  messagingSenderId: firebaseConfig.messagingSenderId,
+  appId: firebaseConfig.appId,
+  measurementId: firebaseConfig.measurementId
+}) : getApps()[0];
 
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)' ? firebaseConfig.firestoreDatabaseId : undefined);
 export default app;

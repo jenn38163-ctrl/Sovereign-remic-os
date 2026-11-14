@@ -7,6 +7,7 @@ export interface AuthenticatedUser {
   role: 'MAKER' | 'CHECKER' | 'ADMIN' | 'AUDITOR';
   name: string;
   scopes: string[];
+  expires_at?: number;
 }
 
 declare global {
@@ -26,7 +27,7 @@ const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
 
 export { privateKey, publicKey };
 
-// Demo users for robust role-based testing and 4-eyes separation of duties
+// Registered principals with strict scopes and tenant binding
 const USERS: Record<string, AuthenticatedUser> = {
   'maker_token_123': {
     id: 'usr-maker-1',
@@ -58,8 +59,10 @@ const USERS: Record<string, AuthenticatedUser> = {
   }
 };
 
+const REVOKED_TOKENS = new Set<string>();
+
 /**
- * Authentication Middleware: Validates Bearer token or x-api-key against registered principals.
+ * Authentication Middleware: Fail-closed strict verification. Rejects missing, invalid, or expired credentials with HTTP 401.
  */
 export function authenticate(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
@@ -71,13 +74,21 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
   } else if (apiKeyHeader) {
     token = apiKeyHeader;
   } else {
-    // Default fallback for development/testing if no header provided
-    token = 'checker_token_456';
+    // CRITICAL FIX: No fallback allowed. Fail closed.
+    return res.status(401).json({ error: 'Unauthorized: Missing authentication credentials or token.' });
+  }
+
+  if (REVOKED_TOKENS.has(token)) {
+    return res.status(401).json({ error: 'Unauthorized: Token has been revoked.' });
   }
 
   const user = USERS[token];
   if (!user) {
-    return res.status(401).json({ error: 'Unauthorized: Invalid authentication token or API key' });
+    return res.status(401).json({ error: 'Unauthorized: Invalid or unrecognized authentication token.' });
+  }
+
+  if (user.expires_at && Date.now() > user.expires_at) {
+    return res.status(401).json({ error: 'Unauthorized: Authentication token has expired.' });
   }
 
   req.user = user;
@@ -85,7 +96,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
 }
 
 /**
- * Tenant Authorization Middleware: Ensures requests are strictly bound to authorized tenant ID.
+ * Tenant Authorization Middleware: Enforces strict resource-level tenant isolation.
  */
 export function authorizeTenant(req: Request, res: Response, next: NextFunction) {
   const user = req.user;
@@ -93,11 +104,13 @@ export function authorizeTenant(req: Request, res: Response, next: NextFunction)
     return res.status(401).json({ error: 'Unauthorized: User principal not found' });
   }
 
-  const requestedTenant = req.headers['x-tenant-id'] || req.body.tenant_id || req.query.tenant_id || user.tenantId;
+  const requestedTenant = req.headers['x-tenant-id'] || req.body.tenant_id || req.query.tenant_id;
   if (requestedTenant && requestedTenant !== user.tenantId && user.role !== 'ADMIN') {
-    return res.status(403).json({ error: 'Forbidden: Cross-tenant data access violation' });
+    return res.status(403).json({ error: 'Forbidden: Cross-tenant data access violation detected and blocked.' });
   }
 
+  // Bind tenant ID explicitly to request
+  req.headers['x-tenant-id'] = user.tenantId;
   next();
 }
 
@@ -112,7 +125,7 @@ export function authorizeRole(...allowedRoles: Array<'MAKER' | 'CHECKER' | 'ADMI
     }
     if (!allowedRoles.includes(user.role) && user.role !== 'ADMIN') {
       return res.status(403).json({ 
-        error: `Forbidden: Role '${user.role}' is not authorized for this operation. Required: [${allowedRoles.join(', ')}]` 
+        error: `Forbidden: Role '${user.role}' is not authorized for this operation. Required roles: [${allowedRoles.join(', ')}]` 
       });
     }
     next();
